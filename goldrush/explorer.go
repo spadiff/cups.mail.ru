@@ -41,18 +41,20 @@ func (e *Explorer) checkArea(a, b Point) (int, error) {
 func (e *Explorer) Run() {
 	for i := 0; i < HEIGHT; i++ {
 		for j := 0; j < WIDTH; j++ {
-			point := Point{
-				x: i,
-				y: j,
-			}
+			point := Point{x: i, y: j}
 			amount, err := e.checkArea(point, point)
 			if err != nil {
 				fmt.Println(err)
 			} else if amount != 0 {
-				err := e.d.Find(point, 1)
-				if err != nil {
-					fmt.Println(err)
-				}
+				go func(e *Explorer, point Point) {
+					for k := 0; k < MAX_DEPTH; k++ {
+						err := e.d.Find(point, k + 1)
+						if err != nil {
+							fmt.Println(err)
+							break
+						}
+					}
+				}(e, point)
 			}
 		}
 	}
