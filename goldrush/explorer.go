@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"go.uber.org/ratelimit"
+)
 
 const (
 	HEIGHT    = 3500
@@ -39,15 +42,20 @@ func (e *Explorer) checkArea(a, b Point) (int, error) {
 }
 
 func (e *Explorer) Run() {
+	rl := ratelimit.New(1000)
+
 	for i := 0; i < HEIGHT; i++ {
 		for j := 0; j < WIDTH; j++ {
+			rl.Take()
 			point := Point{x: i, y: j}
-			amount, err := e.checkArea(point, point)
-			if err != nil {
-				fmt.Println(err)
-			} else if amount != 0 {
-				e.d.Find(point)
-			}
+			go func(e *Explorer, point Point) {
+				amount, err := e.checkArea(point, point)
+				if err != nil {
+					fmt.Println(err)
+				} else if amount != 0 {
+					e.d.Find(point)
+				}
+			}(e, point)
 		}
 	}
 }

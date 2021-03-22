@@ -40,7 +40,7 @@ func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
 func (d *Digger) run() {
 	for point := range d.pointsToFind {
 		go func(d *Digger, point Point) {
-			for depth := 0; depth < MAX_DEPTH; depth++ {
+			for depth := 1; depth <= MAX_DEPTH; depth++ {
 				license := d.l.GetLicense()
 				treasures, err := d.dig(point, depth, license)
 				if err != nil {

@@ -16,7 +16,7 @@ func main() {
 		ticker := time.NewTicker(30 * time.Second)
 		for _ = range ticker.C {
 			fmt.Printf(
-				"l: %d, t: %d, d: %d",
+				"l: %d, t: %d, d: %d\n",
 				len(licenser.licensesQueue),
 				len(treasurer.treasuresToCash),
 				len(digger.pointsToFind),
