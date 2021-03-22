@@ -2,22 +2,16 @@ package main
 
 import (
 	"sync"
-	"time"
 )
-
-type License struct {
-	id   int
-	digs int
-}
 
 type Licenser struct {
 	c             *Client
-	licenses      []License
+	licenses      map[int]int
 	licensesQueue chan int
 	m             sync.Mutex
 }
 
-func (l *Licenser) create(coins []Coin) (License, error) {
+func (l *Licenser) create(coins []Coin) (int, int, error) {
 	response := struct {
 		ID         int `json:"id"`
 		DigAllowed int `json:"digAllowed"`
@@ -26,47 +20,57 @@ func (l *Licenser) create(coins []Coin) (License, error) {
 
 	_, err := l.c.doRequest("licenses", &coins, &response)
 	if err != nil {
-		return License{}, err
+		return 0, 0, err
 	}
 
-	return License{id: response.ID, digs: response.DigAllowed}, nil
+	return response.ID, response.DigAllowed, nil
 }
 
 func (l *Licenser) GetLicense() int {
-	return <-l.licensesQueue
-}
-
-func (l *Licenser) ReturnLicense(id int) {
-	l.licensesQueue <- id
-}
-
-func (l *Licenser) addToQueue(license License) {
 	l.m.Lock()
-	l.licenses = append(l.licenses, license)
-	l.m.Unlock()
+	defer l.m.Unlock()
 
-	for i := 0; i < license.digs; i++ {
-		l.licensesQueue <- license.id
+	for k := range l.licenses {
+		count := l.licenses[k] - 1
+		if count == 0 {
+			delete(l.licenses, k)
+		} else {
+			l.licenses[k] = count
+		}
+		return k
 	}
+	return 0
+}
+
+func (l *Licenser) ReturnLicense(k int) {
+	l.m.Lock()
+	count, ok := l.licenses[k]
+	if !ok {
+		count = 0
+	}
+	l.licenses[k] = count + 1
+	l.m.Unlock()
 }
 
 func (l *Licenser) run() {
-	ticker := time.NewTicker(1 * time.Second)
-	for _ = range ticker.C {
-		if len(l.licensesQueue) > 27 {
+	for {
+		if len(l.licenses) >= 10 {
 			continue
 		}
-		license, err := l.create([]Coin{})
+		id, count, err := l.create([]Coin{})
 		if err == nil {
-			go l.addToQueue(license)
+			l.m.Lock()
+			l.licenses[id] = count
+			l.m.Unlock()
 		}
 	}
 }
 
 func NewLicenser(client *Client) *Licenser {
+	client.SetRPSLimit("licenses", 99)
 	licenser := Licenser{
 		c:             client,
-		licenses:      make([]License, 0),
+		licenses:      make(map[int]int),
 		licensesQueue: make(chan int, 100000),
 	}
 	go licenser.run()

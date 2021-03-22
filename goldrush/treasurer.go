@@ -39,6 +39,7 @@ func (t *Treasurer) Cash(treasure Treasure) {
 }
 
 func NewTreasurer(client *Client) *Treasurer {
+	client.SetRPSLimit("cash", 99)
 	treasurer := Treasurer{
 		c:               client,
 		coins:           make([]Coin, 0),

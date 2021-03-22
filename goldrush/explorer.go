@@ -1,10 +1,5 @@
 package main
 
-import (
-	"fmt"
-	"go.uber.org/ratelimit"
-)
-
 const (
 	HEIGHT    = 3500
 	WIDTH     = 3500
@@ -19,6 +14,9 @@ type Point struct {
 type Explorer struct {
 	c *Client
 	d *Digger
+
+	requestsCount int32
+	successRequestsCount int32
 }
 
 func (e *Explorer) checkArea(a, b Point) (int, error) {
@@ -42,24 +40,21 @@ func (e *Explorer) checkArea(a, b Point) (int, error) {
 }
 
 func (e *Explorer) Run() {
-	rl := ratelimit.New(1000)
-
 	for i := 0; i < HEIGHT; i++ {
 		for j := 0; j < WIDTH; j++ {
-			rl.Take()
 			point := Point{x: i, y: j}
-			go func(e *Explorer, point Point) {
-				amount, err := e.checkArea(point, point)
-				if err != nil {
-					fmt.Println(err)
-				} else if amount != 0 {
-					e.d.Find(point)
-				}
-			}(e, point)
+			amount, err := e.checkArea(point, point)
+			if err == nil && amount != 0 {
+				e.d.Find(point)
+			}
 		}
 	}
 }
 
 func NewExplorer(client *Client, digger *Digger) *Explorer {
-	return &Explorer{c: client, d: digger}
+	client.SetRPSLimit("explore", 499)
+	return &Explorer{
+		c:                    client,
+		d:                    digger,
+	}
 }
