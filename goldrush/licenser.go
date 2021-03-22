@@ -2,13 +2,14 @@ package main
 
 import (
 	"sync"
+	"time"
 )
 
 type Licenser struct {
 	c             *Client
 	licenses      map[int]int
 	licensesQueue chan int
-	m             sync.Mutex
+	m             sync.RWMutex
 }
 
 func (l *Licenser) create(coins []Coin) (int, int, error) {
@@ -27,6 +28,16 @@ func (l *Licenser) create(coins []Coin) (int, int, error) {
 }
 
 func (l *Licenser) GetLicense() int {
+	for {
+		l.m.RLock()
+		if len(l.licenses) != 0 {
+			l.m.RUnlock()
+			break
+		}
+		l.m.RUnlock()
+		time.Sleep(time.Millisecond)
+	}
+
 	l.m.Lock()
 	defer l.m.Unlock()
 
@@ -39,6 +50,7 @@ func (l *Licenser) GetLicense() int {
 		}
 		return k
 	}
+
 	return 0
 }
 
