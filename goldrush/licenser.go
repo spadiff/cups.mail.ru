@@ -2,11 +2,11 @@ package main
 
 import (
 	"sync"
-	"time"
 )
 
 type Licenser struct {
 	c             *Client
+	t             *Treasurer
 	licenses      map[int]int
 	licensesQueue chan int
 	m             sync.RWMutex
@@ -28,15 +28,7 @@ func (l *Licenser) create(coins []Coin) (int, int, error) {
 }
 
 func (l *Licenser) GetLicense() int {
-	for {
-		l.m.RLock()
-		if len(l.licenses) != 0 {
-			l.m.RUnlock()
-			break
-		}
-		l.m.RUnlock()
-		time.Sleep(time.Millisecond)
-	}
+	<-l.licensesQueue
 
 	l.m.Lock()
 	defer l.m.Unlock()
@@ -62,6 +54,7 @@ func (l *Licenser) ReturnLicense(k int) {
 	}
 	l.licenses[k] = count + 1
 	l.m.Unlock()
+	l.licensesQueue <- 1
 }
 
 func (l *Licenser) run() {
@@ -69,19 +62,30 @@ func (l *Licenser) run() {
 		if len(l.licenses) >= 10 {
 			continue
 		}
-		id, count, err := l.create([]Coin{})
+
+		coins := []Coin{}
+		//coinsCount := l.t.GetCoinsCount()
+		//if coinsCount >= 1000 {
+		//	coins = l.t.GetCoins(1000)
+		//}
+
+		id, count, err := l.create(coins)
 		if err == nil {
 			l.m.Lock()
 			l.licenses[id] = count
 			l.m.Unlock()
+			for i := 0; i < count; i++ {
+				l.licensesQueue <- 1
+			}
 		}
 	}
 }
 
-func NewLicenser(client *Client) *Licenser {
+func NewLicenser(client *Client, treasurer *Treasurer) *Licenser {
 	client.SetRPSLimit("licenses", 99)
 	licenser := Licenser{
 		c:             client,
+		t:             treasurer,
 		licenses:      make(map[int]int),
 		licensesQueue: make(chan int, 100000),
 	}

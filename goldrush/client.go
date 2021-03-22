@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -16,6 +17,9 @@ type Client struct {
 	url string
 	isAlive int32
 	rpsLimiters map[string]ratelimit.Limiter
+	queue map[string]int
+	statuses map[string]map[int]int
+	m sync.RWMutex
 }
 
 func parseRequestError(data []byte) error {
@@ -31,6 +35,16 @@ func parseRequestError(data []byte) error {
 }
 
 func (c *Client) doRequest(method string, request, response interface{}) (int, error) {
+	c.m.Lock()
+	c.queue[method]++
+	c.m.Unlock()
+
+	defer func(c *Client) {
+		c.m.Lock()
+		c.queue[method]--
+		c.m.Unlock()
+	}(c)
+
 	for c.isAlive != 1 {}
 	limiter, ok := c.rpsLimiters[method]
 	if ok {
@@ -46,6 +60,17 @@ func (c *Client) doRequest(method string, request, response interface{}) (int, e
 	}
 
 	defer res.Body.Close()
+	defer func(res *http.Response) {
+		c.m.Lock()
+		_, ok := c.statuses[method]
+		if !ok {
+			c.statuses[method] = make(map[int]int)
+		}
+		c.statuses[method][res.StatusCode]++
+		c.statuses[method][0]++
+		c.m.Unlock()
+	}(res)
+
 	resData, err := io.ReadAll(res.Body)
 	if err != nil {
 		return 0, fmt.Errorf("unable to read %s data: %w", method, err)
@@ -88,6 +113,8 @@ func NewClient() *Client {
 		url:         "http://" + address + ":8000",
 		isAlive:     0,
 		rpsLimiters: make(map[string]ratelimit.Limiter),
+		queue:       make(map[string]int),
+		statuses: make(map[string]map[int]int),
 	}
 	go client.healthCheck()
 	return &client

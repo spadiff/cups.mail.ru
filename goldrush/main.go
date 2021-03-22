@@ -7,20 +7,25 @@ import (
 
 func main() {
 	client := NewClient()
-	licenser := NewLicenser(client)
 	treasurer := NewTreasurer(client)
+	licenser := NewLicenser(client, treasurer)
 	digger := NewDigger(client, licenser, treasurer)
 	explorer := NewExplorer(client, digger)
 
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		for _ = range ticker.C {
+			licenser.m.RLock()
+			client.m.RLock()
 			fmt.Printf(
-				"l: %d, t: %d, d: %d\n",
-				len(licenser.licensesQueue),
-				len(treasurer.treasuresToCash),
-				len(digger.pointsToFind),
+				"l: %v, d: %v\nq: %v\ns: %v\n",
+				len(licenser.licenses),
+				digger.pointsInQueue,
+				client.queue,
+				client.statuses,
 			)
+			licenser.m.RUnlock()
+			client.m.RUnlock()
 		}
 	}()
 

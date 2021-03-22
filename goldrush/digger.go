@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 type Digger struct {
@@ -11,6 +12,7 @@ type Digger struct {
 	l *Licenser
 	t *Treasurer
 	pointsToFind chan Point
+	pointsInQueue int32
 }
 
 func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
@@ -39,7 +41,9 @@ func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
 
 func (d *Digger) run() {
 	for point := range d.pointsToFind {
+		atomic.AddInt32(&d.pointsInQueue, 1)
 		go func(d *Digger, point Point) {
+			defer atomic.AddInt32(&d.pointsInQueue, -1)
 			for depth := 1; depth <= MAX_DEPTH; depth++ {
 				license := d.l.GetLicense()
 				treasures, err := d.dig(point, depth, license)

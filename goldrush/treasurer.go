@@ -9,7 +9,7 @@ type Treasurer struct {
 	c *Client
 	coins []Coin
 	treasuresToCash chan Treasure
-	m sync.Mutex
+	m sync.RWMutex
 }
 
 func (t *Treasurer) cash (treasure Treasure) error {
@@ -28,7 +28,23 @@ func (t *Treasurer) cash (treasure Treasure) error {
 	return nil
 }
 
-func (t *Treasurer) run() {
+func (t *Treasurer) GetCoins (number int) []Coin {
+	t.m.Lock()
+	coinsCount := len(t.coins)
+	coins := make([]Coin, number)
+	copy(coins, t.coins[coinsCount - number:coinsCount - 1])
+	t.coins = t.coins[0:coinsCount - number]
+	t.m.Unlock()
+	return coins
+}
+
+func (t *Treasurer) GetCoinsCount () int {
+	t.m.RLock()
+	defer t.m.RUnlock()
+	return len(t.coins)
+}
+
+func (t *Treasurer) run () {
 	for treasure := range t.treasuresToCash {
 		go t.cash(treasure)
 	}
@@ -44,7 +60,6 @@ func NewTreasurer(client *Client) *Treasurer {
 		c:               client,
 		coins:           make([]Coin, 0),
 		treasuresToCash: make(chan Treasure, 100000),
-		m:               sync.Mutex{},
 	}
 	go treasurer.run()
 	return &treasurer
