@@ -1,6 +1,9 @@
 package main
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type License struct {
 	id   int
@@ -48,7 +51,11 @@ func (l *Licenser) addToQueue(license License) {
 }
 
 func (l *Licenser) run() {
-	for {
+	ticker := time.NewTicker(1 * time.Second)
+	for _ = range ticker.C {
+		if len(l.licensesQueue) > 27 {
+			continue
+		}
 		license, err := l.create([]Coin{})
 		if err == nil {
 			go l.addToQueue(license)

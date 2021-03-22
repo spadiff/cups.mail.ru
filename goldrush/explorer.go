@@ -46,15 +46,7 @@ func (e *Explorer) Run() {
 			if err != nil {
 				fmt.Println(err)
 			} else if amount != 0 {
-				go func(e *Explorer, point Point) {
-					for k := 0; k < MAX_DEPTH; k++ {
-						err := e.d.Find(point, k + 1)
-						if err != nil {
-							fmt.Println(err)
-							break
-						}
-					}
-				}(e, point)
+				e.d.Find(point)
 			}
 		}
 	}

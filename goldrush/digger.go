@@ -10,6 +10,7 @@ type Digger struct {
 	c *Client
 	l *Licenser
 	t *Treasurer
+	pointsToFind chan Point
 }
 
 func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
@@ -36,19 +37,36 @@ func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
 	return response, nil
 }
 
-func (d *Digger) Find(point Point, depth int) error {
-	license := d.l.GetLicense()
-	treasures, err := d.dig(point, depth, license)
-	if err != nil {
-		d.l.ReturnLicense(license)
-		return err
+func (d *Digger) run() {
+	for point := range d.pointsToFind {
+		go func(d *Digger, point Point) {
+			for depth := 0; depth < MAX_DEPTH; depth++ {
+				license := d.l.GetLicense()
+				treasures, err := d.dig(point, depth, license)
+				if err != nil {
+					d.l.ReturnLicense(license)
+					fmt.Println(err)
+					return
+				}
+				for _, treasure := range treasures {
+					d.t.Cash(treasure)
+				}
+			}
+		}(d, point)
 	}
-	for _, treasure := range treasures {
-		d.t.Cash(treasure)
-	}
-	return nil
+}
+
+func (d *Digger) Find(point Point) {
+	d.pointsToFind <- point
 }
 
 func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger {
-	return &Digger{c: client, l: licenser, t: treasurer}
+	digger := Digger{
+		c:            client,
+		l:            licenser,
+		t:            treasurer,
+		pointsToFind: make(chan Point, 100000),
+	}
+	go digger.run()
+	return &digger
 }
