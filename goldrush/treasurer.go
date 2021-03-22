@@ -32,6 +32,9 @@ func (t *Treasurer) GetCoins (number int) []Coin {
 	t.m.Lock()
 	coinsCount := len(t.coins)
 	coins := make([]Coin, number)
+	if number == 0 {
+		return coins
+	}
 	copy(coins, t.coins[coinsCount - number:coinsCount - 1])
 	t.coins = t.coins[0:coinsCount - number]
 	t.m.Unlock()

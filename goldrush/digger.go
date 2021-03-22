@@ -65,7 +65,7 @@ func (d *Digger) Find(point Point) {
 }
 
 func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger {
-	client.SetRPSLimit("dig", 499)
+	//client.SetRPSLimit("dig", 499)
 	digger := Digger{
 		c:            client,
 		l:            licenser,

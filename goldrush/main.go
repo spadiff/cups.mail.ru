@@ -18,11 +18,12 @@ func main() {
 			licenser.m.RLock()
 			client.m.RLock()
 			fmt.Printf(
-				"l: %v, d: %v\nq: %v\ns: %v\n",
+				"l: %v, d: %v\nq: %v\ns: %v\n, l:%v\n",
 				len(licenser.licenses),
 				digger.pointsInQueue,
 				client.queue,
 				client.statuses,
+				licenser.stat,
 			)
 			licenser.m.RUnlock()
 			client.m.RUnlock()

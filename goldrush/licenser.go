@@ -9,6 +9,9 @@ type Licenser struct {
 	t             *Treasurer
 	licenses      map[int]int
 	licensesQueue chan int
+	stat          map[int]int
+	now           int
+	nowTime       int
 	m             sync.RWMutex
 }
 
@@ -59,20 +62,23 @@ func (l *Licenser) ReturnLicense(k int) {
 
 func (l *Licenser) run() {
 	for {
-		if len(l.licenses) >= 10 {
-			continue
-		}
-
 		coins := []Coin{}
 		//coinsCount := l.t.GetCoinsCount()
-		//if coinsCount >= 1000 {
-		//	coins = l.t.GetCoins(1000)
+		//if l.now >= coinsCount {
+		//	coins = l.t.GetCoins(l.now)
 		//}
 
 		id, count, err := l.create(coins)
 		if err == nil {
 			l.m.Lock()
 			l.licenses[id] = count
+			l.stat[l.now] += count
+			l.nowTime++
+			if l.nowTime >= 9 {
+				l.stat[l.now] /= l.nowTime
+				l.nowTime = 0
+				l.now++
+			}
 			l.m.Unlock()
 			for i := 0; i < count; i++ {
 				l.licensesQueue <- 1
@@ -88,7 +94,12 @@ func NewLicenser(client *Client, treasurer *Treasurer) *Licenser {
 		t:             treasurer,
 		licenses:      make(map[int]int),
 		licensesQueue: make(chan int, 100000),
+		stat:          make(map[int]int),
+		now:           0,
+		nowTime: 0,
 	}
-	go licenser.run()
+	for i := 0; i < 10; i++ {
+		go licenser.run()
+	}
 	return &licenser
 }
