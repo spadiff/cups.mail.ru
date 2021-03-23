@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 )
 
 type Digger struct {
-	c *Client
-	l *Licenser
-	t *Treasurer
+	c            *Client
+	l            *Licenser
+	t            *Treasurer
 	pointsToFind chan Point
-	pointsInQueue int32
+	measure      *Measure
 }
 
 func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
@@ -41,9 +40,9 @@ func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
 
 func (d *Digger) run() {
 	for point := range d.pointsToFind {
-		atomic.AddInt32(&d.pointsInQueue, 1)
 		go func(d *Digger, point Point) {
-			defer atomic.AddInt32(&d.pointsInQueue, -1)
+			d.measure.Add("points_queue", 1)
+			defer d.measure.Add("points_queue", -1)
 			for depth := 1; depth <= MAX_DEPTH; depth++ {
 				license := d.l.GetLicense()
 				treasures, err := d.dig(point, depth, license)
@@ -52,6 +51,7 @@ func (d *Digger) run() {
 					fmt.Println(err)
 					return
 				}
+				d.measure.Add("depth_"+strconv.Itoa(depth)+"_sum", int32(len(treasures)))
 				for _, treasure := range treasures {
 					d.t.Cash(treasure)
 				}
@@ -70,11 +70,16 @@ func (d *Digger) Find(point Point) {
 
 func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger {
 	//client.SetRPSLimit("dig", 499)
+	measure := []string{"points_queue"}
+	for i := 1; i <= 10; i++ {
+		measure = append(measure, "depth_"+strconv.Itoa(i)+"_sum")
+	}
 	digger := Digger{
 		c:            client,
 		l:            licenser,
 		t:            treasurer,
 		pointsToFind: make(chan Point, 100000),
+		measure:      NewMeasure(measure),
 	}
 	go digger.run()
 	return &digger
