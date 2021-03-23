@@ -76,7 +76,7 @@ func (l *Licenser) run() {
 		l.t.m.Lock()
 		coins := []Coin{}
 		coinsCount := l.t.GetCoinsCount()
-		willUse := l.now
+		willUse := 12
 
 		if willUse > coinsCount {
 			willUse = 0
