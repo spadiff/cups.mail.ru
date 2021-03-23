@@ -18,9 +18,11 @@ func main() {
 			licenser.m.RLock()
 			client.m.RLock()
 			fmt.Printf(
-				"l: %v, d: %v\nq: %v\ns: %v\n",
+				"l: %v, d: %v, ea: %d/%d\nq: %v\ns: %v\n",
 				len(licenser.licenses),
 				digger.pointsInQueue,
+				explorer.emptyAreasCount,
+				explorer.areasCount,
 				client.queue,
 				client.statuses,
 			)
@@ -30,7 +32,7 @@ func main() {
 	}()
 
 	for i := 0; i < 10; i++ {
-		go explorer.Run(350 * i, 350 * (i + 1))
+		go explorer.Run(350 * i, 350 * (i + 1), 5)
 	}
 
 	time.Sleep(10 * time.Minute)

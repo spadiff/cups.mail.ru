@@ -1,5 +1,7 @@
 package main
 
+import "sync/atomic"
+
 const (
 	HEIGHT    = 3500
 	WIDTH     = 3500
@@ -16,11 +18,11 @@ type Explorer struct {
 	c *Client
 	d *Digger
 
-	requestsCount        int32
-	successRequestsCount int32
+	emptyAreasCount int32
+	areasCount int32
 }
 
-func (e *Explorer) checkArea(a, b Point) (int, error) {
+func (e *Explorer) getAreaAmount(a, b Point) (int, error) {
 	// TODO: swap points?
 	request := struct {
 		X     int `json:"posX"`
@@ -40,47 +42,54 @@ func (e *Explorer) checkArea(a, b Point) (int, error) {
 	return response.Amount, err
 }
 
-func (e *Explorer) checkPoint(point Point) {
-	amount, err := e.checkArea(point, point)
-	if err == nil && amount != 0 {
+func (e *Explorer) checkPoint(point Point) (int, error) {
+	amount, err := e.getAreaAmount(point, point)
+	if err != nil {
+		return 0, err
+	}
+	if amount != 0 {
 		point.amount = amount
 		e.d.Find(point)
 	}
+	return amount, nil
 }
 
-func (e *Explorer) Run(from, to int) {
-	for i := from; i < to; i += 2 {
-		for j := 0; j < WIDTH; j += 2 {
-			a := Point{x: i, y: j}
-			b := Point{x: i + 1, y: j + 1}
-			amount, err := e.checkArea(a, b)
-			if err == nil && amount != 0 {
-				e.checkPoint(Point{x: i, y: j})
-				e.checkPoint(Point{x: i + 1, y: j})
-				e.checkPoint(Point{x: i, y: j + 1})
-				e.checkPoint(Point{x: i + 1, y: j + 1})
-			}
-		}
+func (e *Explorer) checkArea(a Point, b Point) error {
+	amount, err := e.getAreaAmount(a, b)
+	if err != nil {
+		return err
 	}
 
+	atomic.AddInt32(&e.areasCount, 1)
 
-	//for i := 90; i < 100; i++ {
-	//	for j := 0; j < WIDTH; j++ {
-	//		point := Point{x: i, y: j, amount: 1}
-	//		e.d.Find(point)
-	//	}
-	//}
+	if amount != 0 {
+		for i := a.x; i <= b.x; i++ {
+			for j := a.y; j <= b.y; j++ {
+				pointAmount, err := e.checkPoint(Point{x: i, y: j})
+				if err != nil {
+					continue
+				}
+				amount -= pointAmount
+				if amount == 0 {
+					return nil
+				}
+			}
+		}
+	} else {
+		atomic.AddInt32(&e.emptyAreasCount, 1)
+	}
 
-	//for i := 30; i < 90; i++ {
-	//	for j := 0; j < WIDTH; j++ {
-	//		point := Point{x: i, y: j}
-	//		amount, err := e.checkArea(point, point)
-	//		if err == nil && amount != 0 {
-	//			point.amount = amount
-	//			e.d.Find(point)
-	//		}
-	//	}
-	//}
+	return nil
+}
+
+func (e *Explorer) Run(from, to, size int) {
+	for i := from; i < to; i += size {
+		for j := 0; j < WIDTH; j += size {
+			a := Point{x: i, y: j}
+			b := Point{x: i + size - 1, y: j + size - 1}
+			_ = e.checkArea(a, b)
+		}
+	}
 }
 
 func NewExplorer(client *Client, digger *Digger) *Explorer {
