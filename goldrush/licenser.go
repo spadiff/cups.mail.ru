@@ -76,7 +76,7 @@ func (l *Licenser) run() {
 		l.t.m.Lock()
 		coins := []Coin{}
 		coinsCount := l.t.GetCoinsCount()
-		willUse := 12
+		willUse := 24
 
 		if willUse > coinsCount {
 			willUse = 0
@@ -111,7 +111,7 @@ func (l *Licenser) run() {
 }
 
 func NewLicenser(client *Client, treasurer *Treasurer) *Licenser {
-	client.SetRPSLimit("licenses", 99)
+	client.SetRPSLimit("licenses", 50)
 	licenser := Licenser{
 		c:             client,
 		t:             treasurer,

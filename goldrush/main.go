@@ -13,7 +13,7 @@ func main() {
 	explorer := NewExplorer(client, digger)
 
 	go func() {
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := time.NewTicker(30 * time.Second)
 		for _ = range ticker.C {
 			licenser.m.RLock()
 			client.m.RLock()
@@ -29,5 +29,9 @@ func main() {
 		}
 	}()
 
-	explorer.Run()
+	for i := 0; i < 10; i++ {
+		go explorer.Run(350 * i, 350 * (i + 1))
+	}
+
+	time.Sleep(10 * time.Minute)
 }

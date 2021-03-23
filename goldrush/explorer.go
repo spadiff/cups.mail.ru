@@ -7,15 +7,16 @@ const (
 )
 
 type Point struct {
-	x int
-	y int
+	x      int
+	y      int
+	amount int
 }
 
 type Explorer struct {
 	c *Client
 	d *Digger
 
-	requestsCount int32
+	requestsCount        int32
 	successRequestsCount int32
 }
 
@@ -39,22 +40,42 @@ func (e *Explorer) checkArea(a, b Point) (int, error) {
 	return response.Amount, err
 }
 
-func (e *Explorer) Run() {
-	for i := 0; i < HEIGHT; i++ {
+func (e *Explorer) Run(from, to int) {
+	for i := from; i < to; i++ {
 		for j := 0; j < WIDTH; j++ {
 			point := Point{x: i, y: j}
 			amount, err := e.checkArea(point, point)
 			if err == nil && amount != 0 {
+				point.amount = amount
 				e.d.Find(point)
 			}
 		}
 	}
+
+
+	//for i := 90; i < 100; i++ {
+	//	for j := 0; j < WIDTH; j++ {
+	//		point := Point{x: i, y: j, amount: 1}
+	//		e.d.Find(point)
+	//	}
+	//}
+
+	//for i := 30; i < 90; i++ {
+	//	for j := 0; j < WIDTH; j++ {
+	//		point := Point{x: i, y: j}
+	//		amount, err := e.checkArea(point, point)
+	//		if err == nil && amount != 0 {
+	//			point.amount = amount
+	//			e.d.Find(point)
+	//		}
+	//	}
+	//}
 }
 
 func NewExplorer(client *Client, digger *Digger) *Explorer {
-	client.SetRPSLimit("explore", 499)
+	//client.SetRPSLimit("explore", 499)
 	return &Explorer{
-		c:                    client,
-		d:                    digger,
+		c: client,
+		d: digger,
 	}
 }

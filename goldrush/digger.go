@@ -55,6 +55,10 @@ func (d *Digger) run() {
 				for _, treasure := range treasures {
 					d.t.Cash(treasure)
 				}
+				point.amount -= len(treasures)
+				if point.amount <= 0 {
+					break
+				}
 			}
 		}(d, point)
 	}
