@@ -40,14 +40,25 @@ func (e *Explorer) checkArea(a, b Point) (int, error) {
 	return response.Amount, err
 }
 
+func (e *Explorer) checkPoint(point Point) {
+	amount, err := e.checkArea(point, point)
+	if err == nil && amount != 0 {
+		point.amount = amount
+		e.d.Find(point)
+	}
+}
+
 func (e *Explorer) Run(from, to int) {
-	for i := from; i < to; i++ {
-		for j := 0; j < WIDTH; j++ {
-			point := Point{x: i, y: j}
-			amount, err := e.checkArea(point, point)
+	for i := from; i < to; i += 2 {
+		for j := 0; j < WIDTH; j += 2 {
+			a := Point{x: i, y: j}
+			b := Point{x: i + 1, y: j + 1}
+			amount, err := e.checkArea(a, b)
 			if err == nil && amount != 0 {
-				point.amount = amount
-				e.d.Find(point)
+				e.checkPoint(Point{x: i, y: j})
+				e.checkPoint(Point{x: i + 1, y: j})
+				e.checkPoint(Point{x: i, y: j + 1})
+				e.checkPoint(Point{x: i + 1, y: j + 1})
 			}
 		}
 	}
