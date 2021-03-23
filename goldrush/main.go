@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+
 func main() {
 	client := NewClient()
 	treasurer := NewTreasurer(client)
@@ -13,7 +14,8 @@ func main() {
 	explorer := NewExplorer(client, digger)
 
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		time.Sleep(9 * time.Minute + 30 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
 		for _ = range ticker.C {
 			licenser.m.RLock()
 			client.m.RLock()
@@ -31,8 +33,9 @@ func main() {
 		}
 	}()
 
+
 	for i := 0; i < 10; i++ {
-		go explorer.Run(350 * i, 350 * (i + 1), 5)
+		go explorer.Run(350 * i, 350 * (i + 1), 1024)
 	}
 
 	time.Sleep(10 * time.Minute)

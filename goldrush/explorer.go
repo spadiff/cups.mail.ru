@@ -42,10 +42,13 @@ func (e *Explorer) getAreaAmount(a, b Point) (int, error) {
 	return response.Amount, err
 }
 
-func (e *Explorer) checkPoint(point Point) (int, error) {
-	amount, err := e.getAreaAmount(point, point)
-	if err != nil {
-		return 0, err
+func (e *Explorer) checkPoint(point Point, amount int) (int, error) {
+	var err error
+	if amount == -1 {
+		amount, err = e.getAreaAmount(point, point)
+		for err != nil {
+			amount, err = e.getAreaAmount(point, point)
+		}
 	}
 	if amount != 0 {
 		point.amount = amount
@@ -54,7 +57,34 @@ func (e *Explorer) checkPoint(point Point) (int, error) {
 	return amount, nil
 }
 
-func (e *Explorer) checkArea(a Point, b Point) error {
+func (e *Explorer) checkBinArea(a, b Point, amount int) (int, error) {
+	if a == b {
+		amount, err := e.checkPoint(a, amount)
+		return amount, err
+	}
+
+	if amount == -1 {
+		var err error
+		amount, err = e.getAreaAmount(a, b)
+		for err != nil {
+			amount, err = e.getAreaAmount(a, b)
+		}
+	}
+
+	if amount == 0 {
+		return 0, nil
+	}
+
+	c := Point{x: b.x, y: (a.y + b.y) / 2}
+	amount1, _ := e.checkBinArea(a, c, -1)
+	if amount1 != amount {
+		c.y += 1
+		_, _ = e.checkBinArea(c, b, amount - amount1)
+	}
+	return amount, nil
+}
+
+func (e *Explorer) checkArea(a, b Point) error {
 	amount, err := e.getAreaAmount(a, b)
 	if err != nil {
 		return err
@@ -65,7 +95,7 @@ func (e *Explorer) checkArea(a Point, b Point) error {
 	if amount != 0 {
 		for i := a.x; i <= b.x; i++ {
 			for j := a.y; j <= b.y; j++ {
-				pointAmount, err := e.checkPoint(Point{x: i, y: j})
+				pointAmount, err := e.checkPoint(Point{x: i, y: j}, -1)
 				if err != nil {
 					continue
 				}
@@ -82,12 +112,22 @@ func (e *Explorer) checkArea(a Point, b Point) error {
 	return nil
 }
 
-func (e *Explorer) Run(from, to, size int) {
-	for i := from; i < to; i += size {
-		for j := 0; j < WIDTH; j += size {
+//func (e *Explorer) Run(from, to, size int) {
+//	for i := from; i < to; i += size {
+//		for j := 0; j < WIDTH; j += size {
+//			a := Point{x: i, y: j}
+//			b := Point{x: i + size - 1, y: j + size - 1}
+//			_ = e.checkArea(a, b)
+//		}
+//	}
+//}
+
+func (e *Explorer) Run(from, to, width int) {
+	for i := from; i < to; i++ {
+		for j := 0; j < WIDTH - width + 1; j += width {
 			a := Point{x: i, y: j}
-			b := Point{x: i + size - 1, y: j + size - 1}
-			_ = e.checkArea(a, b)
+			b := Point{x: i, y: j + width - 1}
+			_, _ = e.checkBinArea(a, b, -1)
 		}
 	}
 }
