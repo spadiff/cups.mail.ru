@@ -1,6 +1,8 @@
 package main
 
-import "sync"
+import (
+	"sync"
+)
 
 type Treasure string
 type Coin int
@@ -29,21 +31,21 @@ func (t *Treasurer) cash (treasure Treasure) error {
 }
 
 func (t *Treasurer) GetCoins (number int) []Coin {
-	t.m.Lock()
 	coinsCount := len(t.coins)
-	coins := make([]Coin, number)
+	coins := make([]Coin, 0)
 	if number == 0 {
 		return coins
 	}
-	copy(coins, t.coins[coinsCount - number:coinsCount - 1])
+	coins = append(coins, t.coins[coinsCount - number:coinsCount - 1]...)
 	t.coins = t.coins[0:coinsCount - number]
-	t.m.Unlock()
 	return coins
 }
 
+func (t *Treasurer) ReturnCoins (coins []Coin) {
+	t.coins = append(t.coins, coins...)
+}
+
 func (t *Treasurer) GetCoinsCount () int {
-	t.m.RLock()
-	defer t.m.RUnlock()
 	return len(t.coins)
 }
 

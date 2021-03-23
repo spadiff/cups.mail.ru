@@ -1,17 +1,19 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 )
+
+var kek bool
 
 type Licenser struct {
 	c             *Client
 	t             *Treasurer
 	licenses      map[int]int
 	licensesQueue chan int
-	stat          map[int]int
+	stat          map[int][]int
 	now           int
-	nowTime       int
 	m             sync.RWMutex
 }
 
@@ -22,7 +24,16 @@ func (l *Licenser) create(coins []Coin) (int, int, error) {
 		DigUsed    int `json:"digUsed"` // TODO: is it really useless?
 	}{}
 
-	_, err := l.c.doRequest("licenses", &coins, &response)
+	code, err := l.c.doRequest("licenses", &coins, &response)
+
+	if code == 402 {
+		if !kek {
+			fmt.Println(err)
+			kek = true
+		}
+		return 0, 0, nil
+	}
+
 	if err != nil {
 		return 0, 0, err
 	}
@@ -62,27 +73,39 @@ func (l *Licenser) ReturnLicense(k int) {
 
 func (l *Licenser) run() {
 	for {
+		l.t.m.Lock()
 		coins := []Coin{}
-		//coinsCount := l.t.GetCoinsCount()
-		//if l.now >= coinsCount {
-		//	coins = l.t.GetCoins(l.now)
-		//}
+		coinsCount := l.t.GetCoinsCount()
+		willUse := l.now
+
+		if willUse > coinsCount {
+			willUse = 0
+		}
+		coins = l.t.GetCoins(willUse)
+		l.t.m.Unlock()
 
 		id, count, err := l.create(coins)
-		if err == nil {
-			l.m.Lock()
-			l.licenses[id] = count
-			l.stat[l.now] += count
-			l.nowTime++
-			if l.nowTime >= 9 {
-				l.stat[l.now] /= l.nowTime
-				l.nowTime = 0
-				l.now++
-			}
-			l.m.Unlock()
-			for i := 0; i < count; i++ {
-				l.licensesQueue <- 1
-			}
+		if err != nil {
+			l.t.m.Lock()
+			l.t.ReturnCoins(coins)
+			l.t.m.Unlock()
+			continue
+		}
+
+		l.m.Lock()
+		l.licenses[id] = count
+		tries, ok := l.stat[willUse]
+		if !ok {
+			l.stat[willUse] = make([]int, 0)
+		}
+		if len(tries) >= 9 || count == 0 {
+			l.now++
+		}
+		l.stat[willUse] = append(tries, count)
+		l.m.Unlock()
+
+		for i := 0; i < count; i++ {
+			l.licensesQueue <- 1
 		}
 	}
 }
@@ -94,9 +117,7 @@ func NewLicenser(client *Client, treasurer *Treasurer) *Licenser {
 		t:             treasurer,
 		licenses:      make(map[int]int),
 		licensesQueue: make(chan int, 100000),
-		stat:          make(map[int]int),
-		now:           0,
-		nowTime: 0,
+		stat:          make(map[int][]int),
 	}
 	for i := 0; i < 10; i++ {
 		go licenser.run()

@@ -13,12 +13,12 @@ func main() {
 	explorer := NewExplorer(client, digger)
 
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(60 * time.Second)
 		for _ = range ticker.C {
 			licenser.m.RLock()
 			client.m.RLock()
 			fmt.Printf(
-				"l: %v, d: %v\nq: %v\ns: %v\n, l:%v\n",
+				"l: %v, d: %v\nq: %v\ns: %v\nl: %v\n",
 				len(licenser.licenses),
 				digger.pointsInQueue,
 				client.queue,
