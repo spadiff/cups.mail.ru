@@ -47,15 +47,19 @@ func (c *Client) doRequest(method string, request, response interface{}) (int, e
 	url := c.url + "/" + method
 	data, _ := json.Marshal(&request)
 
+	before := time.Now()
 	res, err := http.Post(url, "application/json", bytes.NewReader(data))
 	if err != nil {
 		return 0, fmt.Errorf("unable to do %s request: %w", method, err)
 	}
+	after := time.Now().Sub(before).Milliseconds()
 
 	defer res.Body.Close()
 	defer func(res *http.Response) {
 		c.measure.Add(method + "_count", 1)
-		c.measure.Add(method + "_" + strconv.Itoa(res.StatusCode), 1)
+		c.measure.Add(method + "_timing", after)
+		c.measure.Add(method + "_" + strconv.Itoa(res.StatusCode) + "_count", 1)
+		c.measure.Add(method + "_" + strconv.Itoa(res.StatusCode) + "_timing", after)
 	}(res)
 
 	resData, err := io.ReadAll(res.Body)
@@ -100,8 +104,10 @@ func NewClient() *Client {
 	for _, method := range methods {
 		measures = append(measures, method + "_in_progress")
 		measures = append(measures, method + "_count")
+		measures = append(measures, method + "_timing")
 		for i := 0; i < 1000; i++ {
-			measures = append(measures, method + "_" + strconv.Itoa(i))
+			measures = append(measures, method + "_" + strconv.Itoa(i) + "_count")
+			measures = append(measures, method + "_" + strconv.Itoa(i) + "_timing")
 		}
 	}
 

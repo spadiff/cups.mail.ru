@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"time"
 )
 
 const (
@@ -19,6 +20,7 @@ type Point struct {
 type Explorer struct {
 	c       *Client
 	d       *Digger
+	points  chan Point
 	measure *Measure
 }
 
@@ -37,16 +39,26 @@ func (e *Explorer) getAreaAmount(a, b Point) (int, error) {
 		Amount int `json:"amount"`
 	}{}
 
+	before := time.Now()
 	_, err := e.c.doRequest("explore", &request, &response)
-	if err == nil {
-		area := strconv.Itoa(b.y - a.y + 1)
-		e.measure.Add(area+"_count", 1)
-		if response.Amount != 0 {
-			e.measure.Add(area+"_not_empty", 1)
-			e.measure.Add(area+"_sum", int32(response.Amount))
-		} else {
-			e.measure.Add(area+"_empty", 1)
-		}
+	after := time.Now().Sub(before).Milliseconds()
+
+	area := strconv.Itoa(b.y - a.y + 1)
+	e.measure.Add(area+"_count", 1)
+	e.measure.Add(area+"_timing", after)
+
+	if err != nil {
+		e.measure.Add(area+"_err", 1)
+		e.measure.Add(area+"_err_timing", after)
+		return response.Amount, err
+	}
+
+	if response.Amount != 0 {
+		e.measure.Add(area+"_not_empty", 1)
+		e.measure.Add(area+"_not_empty_timing", after)
+	} else {
+		e.measure.Add(area+"_empty", 1)
+		e.measure.Add(area+"_empty_timing", after)
 	}
 
 	return response.Amount, err
@@ -84,6 +96,12 @@ func (e *Explorer) checkBinArea(a, b Point, amount int) (int, error) {
 	if amount == 0 {
 		return 0, nil
 	}
+	//
+	//if b.y - a.y == 1 {
+	//	e.checkPoint(a, amount)
+	//	e.checkPoint(b, amount)
+	//	return amount, nil
+	//}
 
 	c := Point{x: b.x, y: (a.y + b.y) / 2}
 	amount1, _ := e.checkBinArea(a, c, -1)
@@ -137,15 +155,29 @@ func (e *Explorer) Run(from, to, width int) {
 		}
 	}
 }
+//
+//func (e *Explorer) run() {
+//	limiter := ratelimit.New(100)
+//	for point := range e.points {
+//		limiter.Take()
+//		go func(e *Explorer, point Point) {
+//
+//		}(e, point)
+//	}
+//}
 
 func NewExplorer(client *Client, digger *Digger) *Explorer {
 	//client.SetRPSLimit("explore", 499)
 	measures := make([]string, 0)
 	for i := 0; i <= 3500; i++ {
 		measures = append(measures, strconv.Itoa(i)+"_count")
+		measures = append(measures, strconv.Itoa(i)+"_timing")
 		measures = append(measures, strconv.Itoa(i)+"_empty")
+		measures = append(measures, strconv.Itoa(i)+"_empty_timing")
 		measures = append(measures, strconv.Itoa(i)+"_not_empty")
-		measures = append(measures, strconv.Itoa(i)+"_sum")
+		measures = append(measures, strconv.Itoa(i)+"_not_empty_timing")
+		measures = append(measures, strconv.Itoa(i)+"_err")
+		measures = append(measures, strconv.Itoa(i)+"_err_timing")
 	}
 
 	return &Explorer{

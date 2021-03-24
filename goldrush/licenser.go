@@ -62,7 +62,7 @@ func (l *Licenser) run() {
 	for {
 		l.t.m.Lock()
 		coinsCount := l.t.GetCoinsCount()
-		willUse := 24
+		willUse := 12
 
 		if willUse > coinsCount {
 			willUse = 0

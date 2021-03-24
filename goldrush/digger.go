@@ -51,7 +51,7 @@ func (d *Digger) run() {
 					fmt.Println(err)
 					return
 				}
-				d.measure.Add("depth_"+strconv.Itoa(depth)+"_sum", int32(len(treasures)))
+				d.measure.Add("depth_"+strconv.Itoa(depth)+"_sum", int64(len(treasures)))
 				for _, treasure := range treasures {
 					d.t.Cash(treasure)
 				}
