@@ -52,7 +52,7 @@ func main() {
 	digger := NewDigger(client, licenser, treasurer)
 	explorer := NewExplorer(client, digger)
 
-	fmt.Println("10 workerov, 12 monet, 32 shirina")
+	fmt.Println("10 workerov 25, 12 monet")
 
 	go func(){
 		time.Sleep(9*time.Minute + 30*time.Second)
@@ -77,7 +77,7 @@ func main() {
 	}()
 
 	for i := 0; i < 10; i++ {
-		go explorer.Run(350*i, 350*(i+1), 32)
+		go explorer.Run(350*i, 350*(i+1), 25)
 	}
 
 	time.Sleep(10 * time.Minute)
