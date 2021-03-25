@@ -15,6 +15,7 @@ type Licenser struct {
 	m                    sync.RWMutex
 	stop                 *atomic.Bool
 	measure              *Measure
+	cost                 int
 }
 
 func (l *Licenser) create(coins []Coin) (int, int, error) {
@@ -55,7 +56,7 @@ func (l *Licenser) run() {
 			break
 		}
 
-		willUse := 12
+		willUse := l.cost
 
 		if l.licensesBeforePlatit.Load() > 0 {
 			willUse = 0
@@ -77,7 +78,7 @@ func (l *Licenser) run() {
 	}
 }
 
-func NewLicenser(client *Client, treasurer *Treasurer) *Licenser {
+func NewLicenser(client *Client, treasurer *Treasurer, cost int) *Licenser {
 	client.SetRPSLimit("licenses", 25)
 
 	measures := make([]string, 0)
@@ -89,9 +90,10 @@ func NewLicenser(client *Client, treasurer *Treasurer) *Licenser {
 		c:                    client,
 		t:                    treasurer,
 		licensesQueue:        make(chan int, 100000),
-		licensesBeforePlatit: atomic.NewInt32(50),
+		licensesBeforePlatit: atomic.NewInt32(20),
 		stop:                 atomic.NewBool(false),
 		measure:              NewMeasure(measures),
+		cost:                 cost,
 	}
 
 	return &licenser

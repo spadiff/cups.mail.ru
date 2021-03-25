@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 )
 
 type Digger struct {
@@ -14,6 +12,9 @@ type Digger struct {
 	t            *Treasurer
 	pointsToFind chan Point
 	measure      *Measure
+
+	addWorker    chan struct{}
+	deleteWorker chan struct{}
 }
 
 func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
@@ -41,42 +42,63 @@ func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
 }
 
 func (d *Digger) run() {
-	fmt.Println("Tochek:", len(d.pointsToFind))
-
-	var wg sync.WaitGroup
-
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
+	for {
+		<-d.addWorker
 		go func() {
-			defer wg.Done()
-			for point := range d.pointsToFind {
-				d.measure.Add("points_queue", 1)
+			for {
+				done := false
 
-				for depth := 1; depth <= MAX_DEPTH; depth++ {
-					license := d.l.GetLicense(d)
-					treasures, err := d.dig(point, depth, license)
-					if err != nil {
-						d.l.ReturnLicense(license)
-						return
-					}
-					d.measure.Add("depth_"+strconv.Itoa(depth)+"_sum", int64(len(treasures)))
-					for _, treasure := range treasures {
-						d.t.Cash(treasure)
-					}
-					point.amount -= len(treasures)
-					if point.amount <= 0 {
+				select {
+				case point, ok := <-d.pointsToFind:
+					if !ok {
+						done = true
+						d.l.Stop()
+						d.t.AddWorkers(treasureFinishWorkers - treasureWorkers)
 						break
 					}
+
+					d.measure.Add("points_queue", 1)
+
+					for depth := 1; depth <= MAX_DEPTH; depth++ {
+						license := d.l.GetLicense(d)
+						treasures, err := d.dig(point, depth, license)
+						if err != nil {
+							d.l.ReturnLicense(license)
+							return
+						}
+						d.measure.Add("depth_"+strconv.Itoa(depth)+"_sum", int64(len(treasures)))
+						for _, treasure := range treasures {
+							d.t.Cash(treasure)
+						}
+						point.amount -= len(treasures)
+						if point.amount <= 0 {
+							break
+						}
+					}
+
+					d.measure.Add("points_queue", -1)
+				case <-d.deleteWorker:
+					done = true
 				}
 
-				d.measure.Add("points_queue", -1)
+				if done {
+					break
+				}
 			}
 		}()
 	}
+}
 
-	time.Sleep(3 * time.Minute)
-	d.Done()
-	wg.Wait()
+func (d *Digger) AddWorkers(n int) {
+	for i := 0; i < n; i++ {
+		d.addWorker <- struct{}{}
+	}
+}
+
+func (d *Digger) DeleteWorkers(n int) {
+	for i := 0; i < n; i++ {
+		d.deleteWorker <- struct{}{}
+	}
 }
 
 func (d *Digger) Find(point Point) {
@@ -85,6 +107,12 @@ func (d *Digger) Find(point Point) {
 
 func (d *Digger) Done() {
 	close(d.pointsToFind)
+	for i := 0; i < licenseWorkers; i++ {
+		go d.l.run()
+	}
+
+	d.AddWorkers(diggerWorkers)
+	d.t.AddWorkers(treasureWorkers)
 }
 
 func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger {
@@ -99,6 +127,9 @@ func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger
 		t:            treasurer,
 		pointsToFind: make(chan Point, 1000000),
 		measure:      NewMeasure(measure),
+		addWorker:    make(chan struct{}, 100),
+		deleteWorker: make(chan struct{}, 100),
 	}
+	go digger.run()
 	return &digger
 }

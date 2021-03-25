@@ -1,6 +1,7 @@
 package main
 
 import (
+	"go.uber.org/atomic"
 	"strconv"
 	"sync"
 	"time"
@@ -19,10 +20,10 @@ type Point struct {
 }
 
 type Explorer struct {
-	c       *Client
-	d       *Digger
-	points  chan Point
-	measure *Measure
+	c          *Client
+	d          *Digger
+	measure    *Measure
+	shouldFind *atomic.Int32
 }
 
 func (e *Explorer) getAreaAmount(a, b Point) (int, error) {
@@ -66,6 +67,10 @@ func (e *Explorer) getAreaAmount(a, b Point) (int, error) {
 }
 
 func (e *Explorer) checkPoint(point Point, amount int) (int, error) {
+	if e.shouldFind.Load() <= 0 {
+		return 0, nil
+	}
+
 	var err error
 	if amount == -1 {
 		amount, err = e.getAreaAmount(point, point)
@@ -73,10 +78,13 @@ func (e *Explorer) checkPoint(point Point, amount int) (int, error) {
 			amount, err = e.getAreaAmount(point, point)
 		}
 	}
+
 	if amount != 0 {
 		point.amount = amount
 		e.d.Find(point)
+		e.shouldFind.Sub(1)
 	}
+
 	return amount, nil
 }
 
@@ -97,12 +105,6 @@ func (e *Explorer) checkBinArea(a, b Point, amount int) (int, error) {
 	if amount == 0 {
 		return 0, nil
 	}
-	//
-	//if b.y - a.y == 1 {
-	//	e.checkPoint(a, amount)
-	//	e.checkPoint(b, amount)
-	//	return amount, nil
-	//}
 
 	c := Point{x: b.x, y: (a.y + b.y) / 2}
 	amount1, _ := e.checkBinArea(a, c, -1)
@@ -137,24 +139,24 @@ func (e *Explorer) checkArea(a, b Point) error {
 	return nil
 }
 
-func (e *Explorer) Run(from, to, width int, exploreBefore time.Time, wg *sync.WaitGroup) {
+func (e *Explorer) Run(from, to, width int, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for i := from; i < to; i++ {
+		if e.shouldFind.Load() <= 0 {
+			break
+		}
 		for j := 0; j < WIDTH-width+1; j += width {
-			if time.Now().After(exploreBefore) {
+			if e.shouldFind.Load() <= 0 {
 				break
 			}
 			a := Point{x: i, y: j}
 			b := Point{x: i, y: j + width - 1}
 			_, _ = e.checkBinArea(a, b, -1)
 		}
-		if time.Now().After(exploreBefore) {
-			wg.Done()
-			break
-		}
 	}
 }
 
-func NewExplorer(client *Client, digger *Digger) *Explorer {
+func NewExplorer(client *Client, digger *Digger, workers, width, shouldFind int) *Explorer {
 	//client.SetRPSLimit("explore", 499)
 	measures := make([]string, 0)
 	for i := 0; i <= 3500; i++ {
@@ -168,9 +170,23 @@ func NewExplorer(client *Client, digger *Digger) *Explorer {
 		measures = append(measures, strconv.Itoa(i)+"_err_timing")
 	}
 
-	return &Explorer{
-		c:       client,
-		d:       digger,
-		measure: NewMeasure(measures),
+	explorer := Explorer{
+		c:          client,
+		d:          digger,
+		measure:    NewMeasure(measures),
+		shouldFind: atomic.NewInt32(int32(shouldFind)),
 	}
+
+	go func() {
+		var wg sync.WaitGroup
+		cnt := HEIGHT / workers
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go explorer.Run(cnt*i, cnt*(i+1), width, &wg)
+		}
+		wg.Wait()
+		explorer.d.Done()
+	}()
+
+	return &explorer
 }

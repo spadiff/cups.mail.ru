@@ -3,10 +3,7 @@ package main
 import (
 	"fmt"
 	"go.uber.org/atomic"
-	"runtime"
 	"sort"
-	"strconv"
-	"sync"
 	"time"
 )
 
@@ -47,64 +44,53 @@ func (m *Measure) String() string {
 	return result
 }
 
+func stat(digger *Digger, explorer *Explorer, client *Client, treasurer *Treasurer) {
+	time.Sleep(9*time.Minute + 30*time.Second)
+	ticker := time.NewTicker(30 * time.Second)
+	for _ = range ticker.C {
+		fmt.Printf(
+			"d: %v\n"+
+				"e: %v\n"+
+				"c: %v\n"+
+				"cash: %v\n",
+			digger.measure.String(),
+			explorer.measure.String(),
+			client.measure.String(),
+			len(treasurer.treasuresToCash),
+		)
+	}
+}
+
+const (
+	shouldFind     = 26000
+	exploreWorkers = 4
+	exploreWidth   = 25
+	licenseWorkers = 2
+	licenseCost = 12
+	diggerWorkers = 5
+	treasureWorkers = 1
+	treasureFinishWorkers = 4
+)
+
 func main() {
 	client := NewClient()
 	treasurer := NewTreasurer(client)
-	licenser := NewLicenser(client, treasurer)
+	licenser := NewLicenser(client, treasurer, licenseCost)
 	digger := NewDigger(client, licenser, treasurer)
-	explorer := NewExplorer(client, digger)
+	explorer := NewExplorer(client, digger, exploreWorkers, exploreWidth, shouldFind)
 
-	fmt.Println("4 explore po 25, 2 lic, 5 dig, 1 + 1 treasurer (close), 3m explore, from 2m others, 12 monet")
+	fmt.Printf(
+		"%d explore po %d, %d license %d monet, %d dig, %d -> %d treasurer",
+		exploreWorkers,
+		exploreWidth,
+		licenseWorkers,
+		licenseCost,
+		diggerWorkers,
+		treasureWorkers,
+		treasureFinishWorkers,
+	)
 
-	go func() {
-		time.Sleep(9*time.Minute + 30*time.Second)
-		ticker := time.NewTicker(30 * time.Second)
-		for _ = range ticker.C {
-			fmt.Printf(
-				"d: %v\n"+
-					"e: %v\n"+
-					"c: %v\n"+
-					"cash: %v\n",
-				digger.measure.String(),
-				explorer.measure.String(),
-				client.measure.String(),
-				len(treasurer.treasuresToCash),
-			)
-		}
-	}()
+	go stat(digger, explorer, client, treasurer)
 
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		for _ = range ticker.C {
-			//buf := make([]byte, 1000000)
-			//runtime.Stack(buf, true)
-			fmt.Printf("g: %v\n", strconv.Itoa(runtime.NumGoroutine()))
-		}
-	}()
-
-	now := time.Now()
-	exploreBefore := now.Add(3*time.Minute)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go explorer.Run(875*i, 875*(i+1), 25, exploreBefore, &wg)
-	}
-	//wg.Wait()
-
-	time.Sleep(2*time.Minute)
-
-	for i := 0; i < 2; i++ {
-		go licenser.run()
-	}
-
-	digger.run()
-	licenser.Stop()
-	treasurer.Close()
-
-	for i := 0; i < 3; i++ {
-		go treasurer.run()
-	}
-
-	time.Sleep(10 * time.Minute)
+	time.Sleep(15 * time.Minute)
 }

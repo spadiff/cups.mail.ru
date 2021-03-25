@@ -14,6 +14,9 @@ type Treasurer struct {
 	treasuresToCash chan Treasure
 	m               sync.RWMutex
 	closeConnection *atomic.Bool
+
+	addWorker    chan struct{}
+	deleteWorker chan struct{}
 }
 
 func (t *Treasurer) cash(treasure Treasure) error {
@@ -53,8 +56,12 @@ func (t *Treasurer) GetCoinsCount() int {
 
 func (t *Treasurer) run() {
 	for {
-		treasure := <-t.treasuresToCash
-		t.cash(treasure)
+		<-t.addWorker
+		go func() {
+			for treasure := range t.treasuresToCash{
+				t.cash(treasure)
+			}
+		}()
 	}
 }
 
@@ -66,6 +73,17 @@ func (t *Treasurer) Close() {
 	t.closeConnection.Store(true)
 }
 
+func (t *Treasurer) AddWorkers(n int) {
+	for i := 0; i < n; i++ {
+		t.addWorker <- struct{}{}
+	}
+}
+
+func (t *Treasurer) DeleteWorkers(n int) {
+	for i := 0; i < n; i++ {
+		t.deleteWorker <- struct{}{}
+	}
+}
 func NewTreasurer(client *Client) *Treasurer {
 	//client.SetRPSLimit("cash", 105)
 	treasurer := Treasurer{
@@ -73,6 +91,8 @@ func NewTreasurer(client *Client) *Treasurer {
 		coins:           make(chan Coin, 1000000),
 		treasuresToCash: make(chan Treasure, 1000000),
 		closeConnection: atomic.NewBool(false),
+		addWorker:    make(chan struct{}, 100),
+		deleteWorker: make(chan struct{}, 100),
 	}
 	go treasurer.run()
 	return &treasurer
