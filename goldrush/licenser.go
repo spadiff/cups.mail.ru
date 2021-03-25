@@ -1,15 +1,20 @@
 package main
 
 import (
+	"go.uber.org/atomic"
+	"strconv"
 	"sync"
+	"time"
 )
 
 type Licenser struct {
-	c             *Client
-	t             *Treasurer
-	licenses      map[int]int
-	licensesQueue chan int
-	m             sync.RWMutex
+	c                    *Client
+	t                    *Treasurer
+	licensesQueue        chan int
+	licensesBeforePlatit *atomic.Int32
+	m                    sync.RWMutex
+	stop                 *atomic.Bool
+	measure              *Measure
 }
 
 func (l *Licenser) create(coins []Coin) (int, int, error) {
@@ -19,7 +24,7 @@ func (l *Licenser) create(coins []Coin) (int, int, error) {
 		DigUsed    int `json:"digUsed"` // TODO: is it really useless?
 	}{}
 
-	_, err := l.c.doRequest("licenses", &coins, &response)
+	_, err := l.c.doRequest("licenses", &coins, &response, false)
 
 	if err != nil {
 		return 0, 0, err
@@ -28,77 +33,66 @@ func (l *Licenser) create(coins []Coin) (int, int, error) {
 	return response.ID, response.DigAllowed, nil
 }
 
-func (l *Licenser) GetLicense() int {
-	<-l.licensesQueue
-
-	l.m.Lock()
-	defer l.m.Unlock()
-
-	for k := range l.licenses {
-		count := l.licenses[k] - 1
-		if count == 0 {
-			delete(l.licenses, k)
-		} else {
-			l.licenses[k] = count
-		}
-		return k
-	}
-
-	return 0
+func (l *Licenser) GetLicense(d *Digger) int {
+	before := time.Now()
+	license := <-l.licensesQueue
+	d.measure.Add("wait_license_count", 1)
+	d.measure.Add("wait_license_time", time.Now().Sub(before).Microseconds())
+	return license
 }
 
 func (l *Licenser) ReturnLicense(k int) {
-	l.m.Lock()
-	count, ok := l.licenses[k]
-	if !ok {
-		count = 0
-	}
-	l.licenses[k] = count + 1
-	l.m.Unlock()
-	l.licensesQueue <- 1
+	l.licensesQueue <- k
+}
+
+func (l *Licenser) Stop() {
+	l.stop.Store(true)
 }
 
 func (l *Licenser) run() {
 	for {
-		l.t.m.Lock()
-		coinsCount := l.t.GetCoinsCount()
+		if l.stop.Load() {
+			break
+		}
+
 		willUse := 12
 
-		if willUse > coinsCount {
+		if l.licensesBeforePlatit.Load() > 0 {
 			willUse = 0
 		}
 
 		coins := l.t.GetCoins(willUse)
-		l.t.m.Unlock()
 
 		id, count, err := l.create(coins)
 		if err != nil {
-			l.t.m.Lock()
 			l.t.ReturnCoins(coins)
-			l.t.m.Unlock()
 			continue
 		}
 
-		l.m.Lock()
-		l.licenses[id] = count
-		l.m.Unlock()
+		l.licensesBeforePlatit.Sub(1)
 
 		for i := 0; i < count; i++ {
-			l.licensesQueue <- 1
+			l.licensesQueue <- id
 		}
 	}
 }
 
 func NewLicenser(client *Client, treasurer *Treasurer) *Licenser {
-	client.SetRPSLimit("licenses", 50)
+	client.SetRPSLimit("licenses", 25)
+
+	measures := make([]string, 0)
+	for i := 12; i <= 1000; i++ {
+		measures = append(measures, strconv.Itoa(i))
+	}
+
 	licenser := Licenser{
-		c:             client,
-		t:             treasurer,
-		licenses:      make(map[int]int),
-		licensesQueue: make(chan int, 100000),
+		c:                    client,
+		t:                    treasurer,
+		licensesQueue:        make(chan int, 100000),
+		licensesBeforePlatit: atomic.NewInt32(50),
+		stop:                 atomic.NewBool(false),
+		measure:              NewMeasure(measures),
 	}
-	for i := 0; i < 10; i++ {
-		go licenser.run()
-	}
+
 	return &licenser
 }

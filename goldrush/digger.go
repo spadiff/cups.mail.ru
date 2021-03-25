@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 type Digger struct {
@@ -26,7 +28,7 @@ func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
 
 	response := make([]Treasure, 0)
 
-	code, err := d.c.doRequest("dig", &request, &response)
+	code, err := d.c.doRequest("dig", &request, &response, false)
 	if err != nil && code != 404 {
 		if strings.Contains(err.Error(), "no such license") {
 			fmt.Println("no license, status code "+strconv.Itoa(code), license)
@@ -39,38 +41,55 @@ func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
 }
 
 func (d *Digger) run() {
-	for point := range d.pointsToFind {
-		go func(d *Digger, point Point) {
-			d.measure.Add("points_queue", 1)
-			defer d.measure.Add("points_queue", -1)
-			for depth := 1; depth <= MAX_DEPTH; depth++ {
-				license := d.l.GetLicense()
-				treasures, err := d.dig(point, depth, license)
-				if err != nil {
-					d.l.ReturnLicense(license)
-					fmt.Println(err)
-					return
+	fmt.Println("Tochek:", len(d.pointsToFind))
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for point := range d.pointsToFind {
+				d.measure.Add("points_queue", 1)
+
+				for depth := 1; depth <= MAX_DEPTH; depth++ {
+					license := d.l.GetLicense(d)
+					treasures, err := d.dig(point, depth, license)
+					if err != nil {
+						d.l.ReturnLicense(license)
+						return
+					}
+					d.measure.Add("depth_"+strconv.Itoa(depth)+"_sum", int64(len(treasures)))
+					for _, treasure := range treasures {
+						d.t.Cash(treasure)
+					}
+					point.amount -= len(treasures)
+					if point.amount <= 0 {
+						break
+					}
 				}
-				d.measure.Add("depth_"+strconv.Itoa(depth)+"_sum", int64(len(treasures)))
-				for _, treasure := range treasures {
-					d.t.Cash(treasure)
-				}
-				point.amount -= len(treasures)
-				if point.amount <= 0 {
-					break
-				}
+
+				d.measure.Add("points_queue", -1)
 			}
-		}(d, point)
+		}()
 	}
+
+	time.Sleep(3 * time.Minute)
+	d.Done()
+	wg.Wait()
 }
 
 func (d *Digger) Find(point Point) {
 	d.pointsToFind <- point
 }
 
+func (d *Digger) Done() {
+	close(d.pointsToFind)
+}
+
 func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger {
 	//client.SetRPSLimit("dig", 499)
-	measure := []string{"points_queue"}
+	measure := []string{"points_queue", "wait_license_count", "wait_license_time"}
 	for i := 1; i <= 10; i++ {
 		measure = append(measure, "depth_"+strconv.Itoa(i)+"_sum")
 	}
@@ -78,9 +97,8 @@ func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger
 		c:            client,
 		l:            licenser,
 		t:            treasurer,
-		pointsToFind: make(chan Point, 100000),
+		pointsToFind: make(chan Point, 1000000),
 		measure:      NewMeasure(measure),
 	}
-	go digger.run()
 	return &digger
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -40,7 +41,7 @@ func (e *Explorer) getAreaAmount(a, b Point) (int, error) {
 	}{}
 
 	before := time.Now()
-	_, err := e.c.doRequest("explore", &request, &response)
+	_, err := e.c.doRequest("explore", &request, &response, false)
 	after := time.Now().Sub(before).Milliseconds()
 
 	area := strconv.Itoa(b.y - a.y + 1)
@@ -136,35 +137,22 @@ func (e *Explorer) checkArea(a, b Point) error {
 	return nil
 }
 
-//func (e *Explorer) Run(from, to, size int) {
-//	for i := from; i < to; i += size {
-//		for j := 0; j < WIDTH; j += size {
-//			a := Point{x: i, y: j}
-//			b := Point{x: i + size - 1, y: j + size - 1}
-//			_ = e.checkArea(a, b)
-//		}
-//	}
-//}
-
-func (e *Explorer) Run(from, to, width int) {
+func (e *Explorer) Run(from, to, width int, exploreBefore time.Time, wg *sync.WaitGroup) {
 	for i := from; i < to; i++ {
 		for j := 0; j < WIDTH-width+1; j += width {
+			if time.Now().After(exploreBefore) {
+				break
+			}
 			a := Point{x: i, y: j}
 			b := Point{x: i, y: j + width - 1}
 			_, _ = e.checkBinArea(a, b, -1)
 		}
+		if time.Now().After(exploreBefore) {
+			wg.Done()
+			break
+		}
 	}
 }
-//
-//func (e *Explorer) run() {
-//	limiter := ratelimit.New(100)
-//	for point := range e.points {
-//		limiter.Take()
-//		go func(e *Explorer, point Point) {
-//
-//		}(e, point)
-//	}
-//}
 
 func NewExplorer(client *Client, digger *Digger) *Explorer {
 	//client.SetRPSLimit("explore", 499)

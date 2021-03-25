@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,7 @@ func NewMeasure(values []string) *Measure {
 
 func (m *Measure) Add(name string, n int64) {
 	m.stats[name].Add(n)
+	return
 }
 
 func (m *Measure) String() string {
@@ -52,32 +54,56 @@ func main() {
 	digger := NewDigger(client, licenser, treasurer)
 	explorer := NewExplorer(client, digger)
 
-	fmt.Println("10 workerov 25, 12 monet")
+	fmt.Println("4 explore po 25, 2 lic, 5 dig, 1 + 1 treasurer (close), 3m explore, from 2m others, 12 monet")
 
-	go func(){
+	go func() {
 		time.Sleep(9*time.Minute + 30*time.Second)
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(30 * time.Second)
 		for _ = range ticker.C {
 			fmt.Printf(
 				"d: %v\n"+
-				"e: %v\n" +
-				"c: %v\n",
+					"e: %v\n"+
+					"c: %v\n"+
+					"cash: %v\n",
 				digger.measure.String(),
 				explorer.measure.String(),
 				client.measure.String(),
+				len(treasurer.treasuresToCash),
 			)
 		}
 	}()
 
-	go func(){
+	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		for _ = range ticker.C {
-			fmt.Println("g: " + strconv.Itoa(runtime.NumGoroutine()))
+			//buf := make([]byte, 1000000)
+			//runtime.Stack(buf, true)
+			fmt.Printf("g: %v\n", strconv.Itoa(runtime.NumGoroutine()))
 		}
 	}()
 
-	for i := 0; i < 10; i++ {
-		go explorer.Run(350*i, 350*(i+1), 25)
+	now := time.Now()
+	exploreBefore := now.Add(3*time.Minute)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go explorer.Run(875*i, 875*(i+1), 25, exploreBefore, &wg)
+	}
+	//wg.Wait()
+
+	time.Sleep(2*time.Minute)
+
+	for i := 0; i < 2; i++ {
+		go licenser.run()
+	}
+
+	digger.run()
+	licenser.Stop()
+	treasurer.Close()
+
+	for i := 0; i < 3; i++ {
+		go treasurer.run()
 	}
 
 	time.Sleep(10 * time.Minute)
