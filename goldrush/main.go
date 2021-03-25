@@ -44,7 +44,13 @@ func (m *Measure) String() string {
 	return result
 }
 
-func stat(digger *Digger, explorer *Explorer, client *Client, treasurer *Treasurer) {
+func stat(
+	digger *Digger,
+	explorer *Explorer,
+	client *Client,
+	treasurer *Treasurer,
+	licenser *Licenser,
+) {
 	time.Sleep(9*time.Minute + 30*time.Second)
 	ticker := time.NewTicker(30 * time.Second)
 	for _ = range ticker.C {
@@ -52,23 +58,25 @@ func stat(digger *Digger, explorer *Explorer, client *Client, treasurer *Treasur
 			"d: %v\n"+
 				"e: %v\n"+
 				"c: %v\n"+
+				"l: %v\n"+
 				"cash: %v\n",
 			digger.measure.String(),
 			explorer.measure.String(),
 			client.measure.String(),
+			licenser.measure.String(),
 			len(treasurer.treasuresToCash),
 		)
 	}
 }
 
 const (
-	shouldFind     = 26000
-	exploreWorkers = 4
-	exploreWidth   = 25
-	licenseWorkers = 2
-	licenseCost = 12
-	diggerWorkers = 5
-	treasureWorkers = 1
+	shouldFind            = 27000
+	exploreWorkers        = 8
+	exploreWidth          = 25
+	licenseWorkers        = 1
+	licenseCost           = 12
+	diggerWorkers         = 10
+	treasureWorkers       = 4
 	treasureFinishWorkers = 4
 )
 
@@ -79,8 +87,9 @@ func main() {
 	digger := NewDigger(client, licenser, treasurer)
 	explorer := NewExplorer(client, digger, exploreWorkers, exploreWidth, shouldFind)
 
+	fmt.Println("exp: lic in dig")
 	fmt.Printf(
-		"%d explore po %d, %d license %d monet, %d dig, %d -> %d treasurer",
+		"%d explore po %d, %d license %d monet, %d dig, %d -> %d treasurer, goal %d\n",
 		exploreWorkers,
 		exploreWidth,
 		licenseWorkers,
@@ -88,9 +97,10 @@ func main() {
 		diggerWorkers,
 		treasureWorkers,
 		treasureFinishWorkers,
+		shouldFind,
 	)
 
-	go stat(digger, explorer, client, treasurer)
+	go stat(digger, explorer, client, treasurer, licenser)
 
 	time.Sleep(15 * time.Minute)
 }

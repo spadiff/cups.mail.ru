@@ -16,6 +16,7 @@ type Licenser struct {
 	stop                 *atomic.Bool
 	measure              *Measure
 	cost                 int
+	requests             *atomic.Int32
 }
 
 func (l *Licenser) create(coins []Coin) (int, int, error) {
@@ -56,6 +57,7 @@ func (l *Licenser) run() {
 			break
 		}
 
+		//willUse := l.cost * int(l.requests.Load() / 30)
 		willUse := l.cost
 
 		if l.licensesBeforePlatit.Load() > 0 {
@@ -71,6 +73,10 @@ func (l *Licenser) run() {
 		}
 
 		l.licensesBeforePlatit.Sub(1)
+		l.measure.Add(strconv.Itoa(willUse) + "_count", 1)
+		l.measure.Add(strconv.Itoa(willUse) + "_sum", int64(count))
+
+		l.requests.Add(1)
 
 		for i := 0; i < count; i++ {
 			l.licensesQueue <- id
@@ -79,11 +85,12 @@ func (l *Licenser) run() {
 }
 
 func NewLicenser(client *Client, treasurer *Treasurer, cost int) *Licenser {
-	client.SetRPSLimit("licenses", 25)
+	//client.SetRPSLimit("licenses", 25)
 
 	measures := make([]string, 0)
-	for i := 12; i <= 1000; i++ {
-		measures = append(measures, strconv.Itoa(i))
+	for i := 0; i <= 1000; i++ {
+		measures = append(measures, strconv.Itoa(i) + "_count")
+		measures = append(measures, strconv.Itoa(i) + "_sum")
 	}
 
 	licenser := Licenser{
@@ -94,6 +101,7 @@ func NewLicenser(client *Client, treasurer *Treasurer, cost int) *Licenser {
 		stop:                 atomic.NewBool(false),
 		measure:              NewMeasure(measures),
 		cost:                 cost,
+		requests:             atomic.NewInt32(0),
 	}
 
 	return &licenser

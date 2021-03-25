@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"go.uber.org/atomic"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Digger struct {
@@ -13,6 +15,7 @@ type Digger struct {
 	pointsToFind chan Point
 	measure      *Measure
 
+	workers      *atomic.Int32
 	addWorker    chan struct{}
 	deleteWorker chan struct{}
 }
@@ -42,9 +45,12 @@ func (d *Digger) dig(point Point, depth int, license int) ([]Treasure, error) {
 }
 
 func (d *Digger) run() {
-	for {
-		<-d.addWorker
+	for i := 0; i < 10; i++ {
+
 		go func() {
+			<-d.addWorker
+			before := time.Now()
+			license, count := 0, 0
 			for {
 				done := false
 
@@ -53,19 +59,38 @@ func (d *Digger) run() {
 					if !ok {
 						done = true
 						d.l.Stop()
-						d.t.AddWorkers(treasureFinishWorkers - treasureWorkers)
+						fmt.Println("digger:", time.Now().Sub(before).Seconds())
+						d.t.SetWorkers(treasureFinishWorkers)
 						break
 					}
 
 					d.measure.Add("points_queue", 1)
 
 					for depth := 1; depth <= MAX_DEPTH; depth++ {
-						license := d.l.GetLicense(d)
+
+						if count == 0 {
+							var err error
+							willUse := d.l.cost
+
+							if d.l.licensesBeforePlatit.Load() > 0 {
+								willUse = 0
+							}
+							coins := d.l.t.GetCoins(willUse)
+							license, count, err = d.l.create(coins)
+							for err != nil {
+								license, count, err = d.l.create(coins)
+							}
+							d.l.licensesBeforePlatit.Sub(1)
+						}
+
+						//license := d.l.GetLicense(d)
 						treasures, err := d.dig(point, depth, license)
 						if err != nil {
-							d.l.ReturnLicense(license)
+							//d.l.ReturnLicense(license)
 							return
 						}
+						count -= 1
+
 						d.measure.Add("depth_"+strconv.Itoa(depth)+"_sum", int64(len(treasures)))
 						for _, treasure := range treasures {
 							d.t.Cash(treasure)
@@ -78,7 +103,7 @@ func (d *Digger) run() {
 
 					d.measure.Add("points_queue", -1)
 				case <-d.deleteWorker:
-					done = true
+					<-d.addWorker
 				}
 
 				if done {
@@ -89,16 +114,18 @@ func (d *Digger) run() {
 	}
 }
 
-func (d *Digger) AddWorkers(n int) {
-	for i := 0; i < n; i++ {
-		d.addWorker <- struct{}{}
+func (d *Digger) SetWorkers(n int) {
+	workers := int(d.workers.Load())
+	if workers > n {
+		for i := 0; i < workers-n; i++ {
+			d.deleteWorker <- struct{}{}
+		}
+	} else if workers < n {
+		for i := 0; i < n-workers; i++ {
+			d.addWorker <- struct{}{}
+		}
 	}
-}
-
-func (d *Digger) DeleteWorkers(n int) {
-	for i := 0; i < n; i++ {
-		d.deleteWorker <- struct{}{}
-	}
+	d.workers.Store(int32(n))
 }
 
 func (d *Digger) Find(point Point) {
@@ -106,13 +133,27 @@ func (d *Digger) Find(point Point) {
 }
 
 func (d *Digger) Done() {
-	close(d.pointsToFind)
-	for i := 0; i < licenseWorkers; i++ {
-		go d.l.run()
-	}
+	//close(d.pointsToFind)
+	//for i := 0; i < licenseWorkers; i++ {
+	//	go d.l.run()
+	//}
 
-	d.AddWorkers(diggerWorkers)
-	d.t.AddWorkers(treasureWorkers)
+	d.SetWorkers(diggerWorkers)
+	d.t.SetWorkers(treasureWorkers)
+
+	//kek := false
+	//
+	//for {
+	//	if len(d.t.treasuresToCash) > 2000 {
+	//		d.t.SetWorkers(6)
+	//		d.SetWorkers(0)
+	//		kek = true
+	//	} else if len(d.t.treasuresToCash) < 50 && kek {
+	//		d.SetWorkers(10)
+	//		d.t.SetWorkers(0)
+	//		kek = false
+	//	}
+	//}
 }
 
 func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger {
@@ -127,6 +168,7 @@ func NewDigger(client *Client, licenser *Licenser, treasurer *Treasurer) *Digger
 		t:            treasurer,
 		pointsToFind: make(chan Point, 1000000),
 		measure:      NewMeasure(measure),
+		workers:      atomic.NewInt32(0),
 		addWorker:    make(chan struct{}, 100),
 		deleteWorker: make(chan struct{}, 100),
 	}

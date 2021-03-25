@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"go.uber.org/atomic"
 	"strconv"
 	"sync"
@@ -177,6 +178,8 @@ func NewExplorer(client *Client, digger *Digger, workers, width, shouldFind int)
 		shouldFind: atomic.NewInt32(int32(shouldFind)),
 	}
 
+	before := time.Now()
+
 	go func() {
 		var wg sync.WaitGroup
 		cnt := HEIGHT / workers
@@ -184,8 +187,9 @@ func NewExplorer(client *Client, digger *Digger, workers, width, shouldFind int)
 			wg.Add(1)
 			go explorer.Run(cnt*i, cnt*(i+1), width, &wg)
 		}
-		wg.Wait()
 		explorer.d.Done()
+		wg.Wait()
+		fmt.Println("explorer:", time.Now().Sub(before).Seconds())
 	}()
 
 	return &explorer
